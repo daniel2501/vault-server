@@ -1,0 +1,68 @@
+
+# Vars
+
+# Tableau Server
+vs_vars:
+  vault_version: "1.9.2"
+  # Build number in deb package name and scripts directory differ. In the scripts directory name, the dash is replaced with a dot.
+  domain_name: "vault-test.tk"
+  hostname: "vault-test.tk"
+  cert_email: "daniel2501@gmail.com"
+
+# Terraform
+tf_vars:
+  # Functions / config scenarios
+  # Which modules to run:
+  run_base: true
+  run_cluster: true
+  run_eip: true
+  associate_instance: true
+  run_set_up_vault_ubuntu: true
+  # Scenario: generate an EIP only, so that dns can associate it with an existing domain hosted externally from AWS.
+  imported_eip_name: "eip_id" # To import an EIP that already exists in this AWS account.
+
+  # Terraform config
+  # region: "us-east-2"
+  # TODO: Using a manually created local key file for now. Either create one with a local script, or use KMS.
+  public_key_file_name: "key.pub"
+  private_key_file_name: "key"
+# Port config should be in a separate file, and callable by configuration scenario.
+  ports:
+    - name: SSH
+      from_port: 22
+      to_port: 22
+      protocol: "tcp"
+      cidr_blocks: ["0.0.0.0/0"]
+    - name: HTTPS
+      form_port: 443
+      to_port: 443
+      protocol: "tcp"
+      cidr_blocks: ["0.0.0.0/0"]
+    - name: "HTTP"
+      form_port: 80
+      to_port: 80
+      protocol: "tcp"
+      cidr_blocks: ["0.0.0.0/0"]
+    - name: "VAULT"
+      form_port: 8200
+      to_port: 8200
+      protocol: "tcp"
+      cidr_blocks: ["0.0.0.0/0"]
+    - name: "wide_open"
+      form_port: 0
+      to_port: 0
+      protocol: "-1"
+      cidr_blocks: ["0.0.0.0/0"]
+
+  cluster_size: 1
+  # ami_id: "ami-02fe94dee086c0c37"
+  ami_id: "ami-0b0b0a959b02ca354"
+  instance_type: "t2.2xlarge"
+  tags:
+    - name: "ubuntu"
+  hdd:
+    volume_size_in_gb: 200
+    device_name: "/dev/sda1"
+    volume_type: "gp2"
+  os_username: "ubuntu"
+

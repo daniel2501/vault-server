@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# Set hostname
+echo "Setting hostname to ${hostname}"
+sudo hostnamectl set-hostname ${hostname}
+
+# Install ufw
+echo 'Installing ufw'
+sudo apt update
+sudo apt install -y ufw
+systemctl start ufw
+systemctl enable ufw
+
+# Open ports
+sudo ufw allow 8200
+sudo ufw allow 22
+sudo ufw allow 80
+sudo ufw allow 443
+
+# Enable ufw
+echo 'y' | sudo ufw enable
+
+# Start minimal web server
+( while true;\
+  do echo -e \"HTTP/1.1 200 OK\n\n$(echo ${domain_name})\" \
+ | nc -l -k -p 8080 -q 1;\
+ done ) &
+
+min_web_server_pid=$!
+
+# Install certbot
+sudo snap install certbot --classic
+sudo certbot certonly --standalone --preferred-challenges http -d ${domain_name} --non-interactive --agree-tos -m ${cert_email}
+
+# Stop the minimal web server
+kill $min_web_server_pid
+
+# Copy certs to Vault's location
+#
+# sudo cp /etc/letsencrypt/archive/${domain_name}/fullchain.pem /opt/vault/tls/vault-ca.pem
+# sudo cp /etc/letsencrypt/archive/${domain_name}/privkey.pem /opt/vault/tls/vault-key.pem
+# sudo cp /etc/letsencrypt/archive/${domain_name}/cert.pem /opt/vault/tls/vault-cert.pem
+
+# tls group stuff
+sudo groupadd tls
+sudo chgrp -R tls /etc/letsencrypt/{archive,live}
+sudo chmod g+rx /etc/letsencrypt/{archive,live}
+sudo find /etc/letsencrypt/archive -name 'privkey*' -exec chmod g+r {} ';'
+
+# Install Vault
+sudo apt install -y wget unzip
+wget https://releases.hashicorp.com/vault/${vault_version}/vault_${vault_version}_linux_amd64.zip
+unzip vault_*_linux_amd64.zip
+sudo mv vault /usr/local/bin
+sudo chown root:root /usr/local/bin/vault
+sudo chmod 755 /usr/local/bin/vault
+sudo setcap cap_ipc_lock=+ep /usr/local/bin/vault
+vault --version
+
+# Configure system user for Vault and add to tls group
+sudo useradd --system -d /etc/vault.d -s /bin/nologin vault
+sudo gpasswd -a vault tls
+
+# Create the data and config directories
+sudo install -o vault -g vault -m 750 -d /var/lib/vault
+sudo install -o vault -g vault -m 750 -d /etc/vault.d
+
+# Copy config files
+cp vault.service /etc/systemd/system/vault.service
+cp vault.hcl /etc/vault.d/vault.hcl
+
+# Start Vault
+sudo systemctl start vault
+sudo systemctl enable vault
+export VAULT_ADDR=https://${domain_name}:8200
+vault status
+
+# Initialize and unseal Vault
+mkdir /etc/vault
+vault operator init -key-shares=3 -key-threshold=2 | sudo tee /etc/vault/init-info
+egrep -m2 '^Unseal Key' /etc/vault/init-info | cut -f2- -d: | tr -d ' ' | while read key; do   vault operator unseal $${key}; done
